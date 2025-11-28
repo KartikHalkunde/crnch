@@ -1,0 +1,15 @@
+[package]
+name = "crnch"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kartik <kartikhalkunde26@gmail.com>"]
+description = "A lightning-fast wrapper for professional file compression."
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.0"       # Makes output look pro
+anyhow = "1.0"        # Clean error handling
+which = "4.4"         # To find binaries
+dialoguer = "0.10"    # For the selection menu
+regex = "1.10"        # To parse "200k", "5mb"
+os_info = "3.7"       # To detect Distro for helpful install hints
