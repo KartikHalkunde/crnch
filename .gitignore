@@ -1,9 +1,4 @@
-# Ignore everything
-*
-
-# But not these files/folders:
-!Cargo.toml
-!README.md
-!src/
-!.gitignore
-!LICENSE
+target/
+*.rs.bk
+*.log
+testing-files/
