@@ -4,6 +4,6 @@
 # But not these files/folders:
 !Cargo.toml
 !README.md
-!src/*
+!src/
 !.gitignore
 !LICENSE
