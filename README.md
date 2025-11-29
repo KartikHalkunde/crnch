@@ -17,7 +17,7 @@
 ![Rust](https://img.shields.io/badge/Made%20with-Rust-orange)
 ![Arch](https://img.shields.io/badge/Arch-Native-blue)
 
-## 🚀 Features
+## Features
 
 - **Multi-stage Compression:** Uses waterfall logic for PNG/JPG (lossless, quantization, grayscale, resize) and binary search for PDF DPI.
 - **Target Size:** Specify exact output size (e.g., `--size 200k`).
@@ -27,13 +27,13 @@
 - **Unified Output:** All results saved as `crnched_<filename>.<ext>`.
 - **Interactive Prompts:** Offers grayscale/resize options if target size is unreachable.
 
-## 🖼️ Supported Formats & Tools
+## Supported Formats & Tools
 
 - **JPG:** `jpegoptim` (lossless), `imagemagick` (lossy, extent targeting)
 - **PNG:** `oxipng` (lossless), `pngquant` (quantization), `imagemagick` (grayscale/resize)
 - **PDF:** `ghostscript` (standard preset, binary search for DPI)
 
-## 💡 Usage
+## Usage
 
 ```bash
 crnch <file> [--size <target>] [--level <low|medium|high>] [--output <path>] [--nerd]
@@ -46,7 +46,7 @@ crnch image.png --size 200k
 crnch document.pdf --nerd
 ```
 
-## 📦 Installation
+## Installation
 
 **Arch Linux:**
 ```bash
