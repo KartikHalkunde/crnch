@@ -1,30 +1,54 @@
-# crnch ⚡
+```bash
+                                        █████                                   ███                ██████          
+                                       ░░███                                   ░░░                ███░░███         
+  ██████  ████████  ████████    ██████  ░███████                               ████  ████████    ░███ ░░░   ██████ 
+ ███░░███░░███░░███░░███░░███  ███░░███ ░███░░███        ██████████ ██████████░░███ ░░███░░███  ███████    ███░░███
+░███ ░░░  ░███ ░░░  ░███ ░███ ░███ ░░░  ░███ ░███       ░░░░░░░░░░ ░░░░░░░░░░  ░███  ░███ ░███ ░░░███░    ░███ ░███
+░███  ███ ░███      ░███ ░███ ░███  ███ ░███ ░███                              ░███  ░███ ░███   ░███     ░███ ░███
+░░██████  █████     ████ █████░░██████  ████ █████                             █████ ████ █████  █████    ░░██████ 
+ ░░░░░░  ░░░░░     ░░░░ ░░░░░  ░░░░░░  ░░░░ ░░░░░                             ░░░░░ ░░░░ ░░░░░  ░░░░░      ░░░░░░  
+                                                                                                                   
+````
 
-**crnch** is a blazing fast, Arch-native CLI wrapper that squeezes PDFs, PNGs, and JPGs to the absolute limit without losing visual quality. 
 
-It wraps industry-standard engines (`ghostscript`, `pngquant`, `imagemagick`) into a single, unified interface.
+
+**crnch** is a Rust CLI tool that compresses PNG, JPG, and PDF files to the smallest possible size without visible quality loss. It wraps industry-standard tools (`ghostscript`, `pngquant`, `imagemagick`, `jpegoptim`, `oxipng`) into a unified interface.
 
 ![Rust](https://img.shields.io/badge/Made%20with-Rust-orange)
 ![Arch](https://img.shields.io/badge/Arch-Native-blue)
 
 ## 🚀 Features
 
-- **Smart Wrapper:** Uses the best engine for the job.
-  - JPG → `ImageMagick` (via `jpeg:extent`)
-  - PNG → `pngquant` (Lossy quantization)
-  - PDF → `Ghostscript` (Hybrid presets)
-- **Target Size:** Specify exactly how big you want the file (e.g., `-s 200k`).
-- **Interactive Menu:** Just run `crnch file.pdf` and pick a level.
-- **Dependency Check:** Automatically detects missing tools and tells you how to install them.
-- **Unified Branding:** Outputs files as `crnched_<filename>.<ext>`.
+- **Multi-stage Compression:** Uses waterfall logic for PNG/JPG (lossless, quantization, grayscale, resize) and binary search for PDF DPI.
+- **Target Size:** Specify exact output size (e.g., `--size 200k`).
+- **Nerd Mode:** Detailed technical output with color-coded stages and tool info.
+- **Single Pacman Progress Bar:** Smooth, animated progress for all operations.
+- **Dependency Detection:** Checks for required tools and provides install tips.
+- **Unified Output:** All results saved as `crnched_<filename>.<ext>`.
+- **Interactive Prompts:** Offers grayscale/resize options if target size is unreachable.
+
+## 🖼️ Supported Formats & Tools
+
+- **JPG:** `jpegoptim` (lossless), `imagemagick` (lossy, extent targeting)
+- **PNG:** `oxipng` (lossless), `pngquant` (quantization), `imagemagick` (grayscale/resize)
+- **PDF:** `ghostscript` (standard preset, binary search for DPI)
+
+## 💡 Usage
+
+```bash
+crnch <file> [--size <target>] [--level <low|medium|high>] [--output <path>] [--nerd]
+```
+
+### Example
+
+```bash
+crnch image.png --size 200k
+crnch document.pdf --nerd
+```
 
 ## 📦 Installation
 
-### Prerequisites
-`crnch` relies on external binaries. 
-
 **Arch Linux:**
 ```bash
-sudo pacman -S ghostscript imagemagick pngquant
-# OR via Yay
-yay -S ghostscript imagemagick pngquant
+sudo pacman -S ghostscript imagemagick pngquant jpegoptim oxipng
+```
