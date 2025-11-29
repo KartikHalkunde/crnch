@@ -46,28 +46,7 @@ fn main() {
     // Set nerd mode globally
     logger::set_nerd_mode(cli.nerd);
 
-    // 2. Interactive Mode (If no size/level provided)
-    if cli.size.is_none() && cli.level.is_none() {
-        let selections = &[
-            "Low Compression (Better Quality)",
-            "Medium Compression (Balanced)",
-            "High Compression (Smallest Size)",
-        ];
-
-        println!("{}", "No options provided. Select compression mode:".yellow());
-        
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .default(1)
-            .items(&selections[..])
-            .interact()
-            .unwrap();
-
-        cli.level = Some(match selection {
-            0 => CompressionLevel::Low,
-            1 => CompressionLevel::Medium,
-            _ => CompressionLevel::High,
-        });
-    }
+    // 2. If no size/level provided, just do lossless compression (oxipng) without prompt
 
     // 3. Determine Output Filename
     let input_path = Path::new(&cli.file);

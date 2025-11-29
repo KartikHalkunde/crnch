@@ -78,10 +78,12 @@ impl PacmanProgress {
         let elapsed = self.start_time.elapsed();
         // Final state: pacman at the end, all dots eaten
         let behind = " ".repeat(self.width);
-        println!("\r   [{}{}] 100% Done! ({:.1}s)   ", 
+        // Pad with extra spaces to clear any leftover text
+        println!("\r   [{}{}] 100% Done! ({:.1}s)   {}", 
             behind, 
             "C".green(),
-            elapsed.as_secs_f64()
+            elapsed.as_secs_f64(),
+            "      " // extra spaces
         );
     }
 
