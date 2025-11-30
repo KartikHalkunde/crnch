@@ -56,35 +56,208 @@ pub fn compress_file(input: &str, output: &str, size_str: Option<String>, level:
 fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option<CompressionLevel>, nerd: bool) -> Result<CompResult> {
     let start = Instant::now();
     let progress = PacmanProgress::new(1, "Optimizing JPG...");
-
     let tmp_optim = format!("{}.jpegoptim.tmp.jpg", output);
-    if nerd {
-        logger::nerd_stage(1, "JPEG Lossless Optimization");
-        logger::nerd_result("Tool", "jpegoptim", false);
-        logger::nerd_algo("jpegoptim", "O(1)", "Stripping metadata and optimizing");
-        logger::nerd_cmd(&format!("jpegoptim --strip-all --dest=. {}", input));
-    }
-    // Run jpegoptim for lossless optimization
-    let status = Command::new("jpegoptim")
-        .arg("--strip-all")
-        .arg("--dest=.")
-        .arg("--stdout")
-        .arg(input)
-        .stdout(fs::File::create(&tmp_optim)?)
-        .status()?;
-    if !status.success() {
-        // If jpegoptim fails, fallback to magick directly
-        if nerd { logger::nerd_result("jpegoptim failed, skipping to lossy stage", "", true); }
-    }
-    let optim_size = get_file_size_kb(&tmp_optim);
-    if nerd {
-        logger::nerd_result("Output Size after jpegoptim", &format!("{} KB", optim_size), false);
-    }
-    // If no target, or target met, use jpegoptim result
-    if target_kb.is_none() || (target_kb.is_some() && optim_size <= target_kb.unwrap()) {
-        fs::copy(&tmp_optim, output)?;
+
+    // If no size flag, use standard preset
+    if target_kb.is_none() {
+        if nerd {
+            use colored::*;
+            println!("");
+            println!("{}", "====================[ JPG COMPRESSION: NERD MODE ]====================".bold().yellow());
+            println!("{}", "[INPUT]".bold().cyan());
+            println!("   |- File: {}", input.cyan());
+            println!("   |- Type: {}", "JPG".cyan());
+            println!("   |- Size: {} KB", get_file_size_kb(input).to_string().green());
+            println!("   '- Target: {}", "Auto (60-95% of original size)".green());
+            println!("");
+            println!("{}", "[STAGE 1] JPEG Lossless Optimization".bold().yellow());
+            println!("   |- Tool: {}", "jpegoptim".cyan());
+            println!("   |- Complexity: {}", "O(1)".green());
+            println!("   |- Strategy: {}", "Stripping metadata and optimizing".green());
+            println!("   |- Cmd: {}", format!("jpegoptim --strip-all --dest=. {}", input).cyan());
+        }
+        // Run jpegoptim for lossless optimization
+        let status = Command::new("jpegoptim")
+            .arg("--strip-all")
+            .arg("--dest=.")
+            .arg("--stdout")
+            .arg(input)
+            .stdout(fs::File::create(&tmp_optim)?)
+            .status()?;
+        if !status.success() {
+            if nerd { logger::nerd_result("jpegoptim failed, skipping to magick stage", "", true); }
+            // Fallback: use input directly for magick
+            fs::copy(input, &tmp_optim)?;
+        }
+        let optim_size = get_file_size_kb(&tmp_optim);
+        if nerd {
+            println!("   |- Output Size after jpegoptim: {} KB", optim_size);
+        }
+        // Adaptive target compression: try 60%, then 65%, ..., up to 95% of original size
+        let original_size = get_file_size_kb(input);
+        let mut success = false;
+        let mut final_size = original_size;
+        let mut final_target = original_size;
+        let mut tried_targets = Vec::new();
+        for percent in [60, 65, 70, 75, 80, 85, 90, 95] {
+            let target_kb = original_size * percent / 100;
+            let try_out = if percent == 60 { output.to_string() } else { format!("{}.tgt{}p.jpg", output, percent) };
+            if nerd {
+                println!("");
+                println!("{}", "[STAGE 2] JPEG Magick Compression".bold().yellow());
+                println!("   |- Tool: {}", "ImageMagick".cyan());
+                println!("   |- Complexity: {}", "O(1)".green());
+                println!("   |- Strategy: {}", "Targeted lossy compression".green());
+                println!("   |- Cmd: {}", format!("magick ... -define jpeg:extent={}KB -sampling-factor 4:4:4 -interlace Plane -strip {} {}", target_kb, &tmp_optim, &try_out).cyan());
+                println!("   |- Target: {} KB ({}% of original)", target_kb.to_string().green(), percent.to_string().green());
+            }
+            let mut cmd = Command::new("magick");
+            cmd.arg(&tmp_optim)
+                .arg("-define").arg(format!("jpeg:extent={}KB", target_kb))
+                .arg("-sampling-factor").arg("4:4:4")
+                .arg("-interlace").arg("Plane")
+                .arg("-strip")
+                .arg(&try_out);
+            let status = cmd.status()?;
+            if !status.success() { continue; }
+            let out_size = get_file_size_kb(&try_out);
+            tried_targets.push(try_out.clone());
+            if nerd {
+                println!("   |- Result: {} KB {}", out_size, if out_size <= target_kb {"(Hit!)"} else {"(Miss)"});
+            }
+            if out_size <= target_kb {
+                final_size = out_size;
+                final_target = target_kb;
+                success = true;
+                // Move/copy to output if not already
+                if try_out != output {
+                    fs::copy(&try_out, output)?;
+                }
+                break;
+            }
+        }
         fs::remove_file(&tmp_optim).ok();
+        // Clean up temp files except final output
+        for f in tried_targets {
+            if f != output { let _ = fs::remove_file(&f); }
+        }
         progress.finish();
+        let total_time = start.elapsed().as_secs_f64();
+        if nerd {
+            println!("");
+            println!("{}", "====================[ JPG COMPRESSION RESULT ]====================".bold().yellow());
+            println!("   |- Path: {}", output.cyan());
+            println!("   |- Type: {}", "JPG".cyan());
+            println!("   |- Original Size: {} KB", original_size.to_string().green());
+            println!("   |- Final Size: {} KB", final_size.to_string().green());
+            if success {
+                let percent_reduced = 100.0 - (final_size as f64 / original_size as f64 * 100.0);
+                println!("   |- Total Compression: {:.2}%", percent_reduced.to_string().green());
+            } else {
+                println!("   |- Total Compression: {}", "0% (could not reach any target)".red());
+                println!("   |- Note: {}", "This image cannot be compressed to the desired size (60-95% of original). Keeping original.".red());
+            }
+            println!("   '- Total Time: {:.2}s", total_time.to_string().cyan());
+        }
+        if success {
+            return Ok(CompResult{ algorithm: format!("jpegoptim + magick (Standard Preset, target {} KB)", final_target) });
+        } else {
+            // Inform user compression not possible
+            println!("This image cannot be compressed to the desired size (60-95% of original). Keeping original.");
+            fs::copy(input, output)?;
+            return Ok(CompResult{ algorithm: "jpegoptim + magick (No reduction, original kept)".to_string() });
+        }
+    } else {
+        // Original lossy/target logic for JPG compression
+        if nerd {
+            logger::nerd_stage(1, "JPEG Lossless Optimization");
+            logger::nerd_result("Tool", "jpegoptim", false);
+                logger::nerd_result("Complexity", "O(1)", false);
+                logger::nerd_result("Strategy", "Stripping metadata and optimizing", false);
+            logger::nerd_cmd(&format!("jpegoptim --strip-all --dest=. {}", input));
+        }
+        // Run jpegoptim for lossless optimization
+        let status = Command::new("jpegoptim")
+            .arg("--strip-all")
+            .arg("--dest=.")
+            .arg("--stdout")
+            .arg(input)
+            .stdout(fs::File::create(&tmp_optim)?)
+            .status()?;
+        if !status.success() {
+            // If jpegoptim fails, fallback to magick directly
+            if nerd { logger::nerd_result("jpegoptim failed, skipping to lossy stage", "", true); }
+        }
+        let optim_size = get_file_size_kb(&tmp_optim);
+        if nerd {
+            logger::nerd_result("Output Size after jpegoptim", &format!("{} KB", optim_size), false);
+        }
+        // If target met, use jpegoptim result
+        if target_kb.is_some() && optim_size <= target_kb.unwrap() {
+            fs::copy(&tmp_optim, output)?;
+            fs::remove_file(&tmp_optim).ok();
+            progress.finish();
+            if nerd {
+                let final_size = get_file_size_kb(output);
+                let original_size = get_file_size_kb(input);
+                let total_time = start.elapsed().as_secs_f64();
+                println!("\n   =================================================================");
+                println!("   OUTPUT IMAGE:");
+                println!("   |- Path: {}", output);
+                println!("   |- Type: JPG");
+                println!("   |- Original Size: {} KB", original_size);
+                println!("   |- Final Size: {} KB", final_size);
+                println!("   |- Total Compression: {:.2}%", if original_size > 0 { (original_size - final_size) as f64 / original_size as f64 * 100.0 } else { 0.0 });
+                println!("   '- Total Time: {:.2}s", total_time);
+            }
+            return Ok(CompResult{ algorithm: "jpegoptim (Lossless)".to_string() });
+        }
+
+        // Stage 2: Lossy compression with ImageMagick
+        if nerd {
+            logger::nerd_stage(2, "JPEG Lossy Compression");
+            logger::nerd_result("Tool", "ImageMagick", false);
+                logger::nerd_result("Complexity", "O(1)", false);
+                logger::nerd_result("Strategy", "Smart extent targeting", false);
+        }
+        let mut cmd = Command::new("magick");
+        cmd.arg(&tmp_optim).arg("-strip");
+        cmd.arg("-sampling-factor").arg("4:4:4");
+
+        if let Some(kb) = target_kb {
+            let arg = format!("jpeg:extent={}KB", kb);
+            cmd.arg("-define").arg(&arg);
+            if nerd { logger::nerd_cmd(&format!("magick ... -define {}", arg)); }
+        } else if let Some(lvl) = level {
+            let q = match lvl {
+                CompressionLevel::Low => "85",
+                CompressionLevel::Medium => "75",
+                CompressionLevel::High => "50",
+            };
+            cmd.arg("-quality").arg(q);
+        } else {
+            cmd.arg("-quality").arg("80");
+        }
+
+        cmd.arg(output);
+        let status = cmd.status()?;
+        fs::remove_file(&tmp_optim).ok();
+        if !status.success() { return Err(anyhow!("ImageMagick failed.")); }
+        progress.finish();
+
+        // Check & Fallbacks
+        if let Some(target) = target_kb {
+            let current_size = get_file_size_kb(output);
+            if nerd {
+                let hit = if current_size <= target { "Hit!" } else { "Miss" };
+                logger::nerd_result("Target", &format!("{} KB", target), false);
+                logger::nerd_result("Result", &format!("{} KB ({})", current_size, hit), false);
+            }
+            if current_size > target {
+                return handle_fallback_options(output, target, current_size, nerd, "JPG");
+            }
+        }
+
         if nerd {
             let final_size = get_file_size_kb(output);
             let original_size = get_file_size_kb(input);
@@ -98,67 +271,8 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             println!("   |- Total Compression: {:.2}%", if original_size > 0 { (original_size - final_size) as f64 / original_size as f64 * 100.0 } else { 0.0 });
             println!("   '- Total Time: {:.2}s", total_time);
         }
-        return Ok(CompResult{ algorithm: "jpegoptim (Lossless)".to_string() });
+        return Ok(CompResult{ algorithm: "jpegoptim + ImageMagick".to_string() });
     }
-
-    // Stage 2: Lossy compression with ImageMagick
-    if nerd {
-        logger::nerd_stage(2, "JPEG Lossy Compression");
-        logger::nerd_result("Tool", "ImageMagick", false);
-        logger::nerd_algo("ImageMagick", "O(1)", "Smart extent targeting");
-    }
-    let mut cmd = Command::new("magick");
-    cmd.arg(&tmp_optim).arg("-strip");
-    cmd.arg("-sampling-factor").arg("4:4:4");
-
-    if let Some(kb) = target_kb {
-        let arg = format!("jpeg:extent={}KB", kb);
-        cmd.arg("-define").arg(&arg);
-        if nerd { logger::nerd_cmd(&format!("magick ... -define {}", arg)); }
-    } else if let Some(lvl) = level {
-        let q = match lvl {
-            CompressionLevel::Low => "85",
-            CompressionLevel::Medium => "75",
-            CompressionLevel::High => "50",
-        };
-        cmd.arg("-quality").arg(q);
-    } else {
-        cmd.arg("-quality").arg("80");
-    }
-
-    cmd.arg(output);
-    let status = cmd.status()?;
-    fs::remove_file(&tmp_optim).ok();
-    if !status.success() { return Err(anyhow!("ImageMagick failed.")); }
-    progress.finish();
-
-    // Check & Fallbacks
-    if let Some(target) = target_kb {
-        let current_size = get_file_size_kb(output);
-        if nerd {
-            let hit = if current_size <= target { "Hit!" } else { "Miss" };
-            logger::nerd_result("Target", &format!("{} KB", target), false);
-            logger::nerd_result("Result", &format!("{} KB ({})", current_size, hit), false);
-        }
-        if current_size > target {
-            return handle_fallback_options(output, target, current_size, nerd, "JPG");
-        }
-    }
-
-    if nerd {
-        let final_size = get_file_size_kb(output);
-        let original_size = get_file_size_kb(input);
-        let total_time = start.elapsed().as_secs_f64();
-        println!("\n   =================================================================");
-        println!("   OUTPUT IMAGE:");
-        println!("   |- Path: {}", output);
-        println!("   |- Type: JPG");
-        println!("   |- Original Size: {} KB", original_size);
-        println!("   |- Final Size: {} KB", final_size);
-        println!("   |- Total Compression: {:.2}%", if original_size > 0 { (original_size - final_size) as f64 / original_size as f64 * 100.0 } else { 0.0 });
-        println!("   '- Total Time: {:.2}s", total_time);
-    }
-    Ok(CompResult{ algorithm: "jpegoptim + ImageMagick".to_string() })
 }
 
 // PNG: Waterfall Strategy (His Version - Smartest Logic)

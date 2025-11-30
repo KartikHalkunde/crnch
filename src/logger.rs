@@ -115,13 +115,17 @@ pub fn log_done() {
 pub fn log_result(input_path: &str, output_path: &str, old_kb: u64, new_kb: u64) {
     if is_nerd_mode() { return; }
     
-    let reduction = if old_kb > 0 {
+    let reduction = if old_kb > 0 && new_kb <= old_kb {
         ((old_kb - new_kb) as f64 / old_kb as f64 * 100.0) as u64
     } else { 0 };
-    
+
     println!("   Input:  {} ({}KB)", input_path, old_kb);
     println!("   Output: {} ({}KB)", output_path, new_kb.to_string().green());
-    println!("   Saved:  {}%", reduction.to_string().green());
+    if new_kb > old_kb {
+        println!("   Saved:  0% (file grew, no savings)");
+    } else {
+        println!("   Saved:  {}%", reduction.to_string().green());
+    }
 }
 
 pub fn log_warning(msg: &str) {
