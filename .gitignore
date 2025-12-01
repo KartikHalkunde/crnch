@@ -2,3 +2,6 @@ target/
 *.rs.bk
 *.log
 testing-files/
+*.pdf
+*.png
+*.jpg

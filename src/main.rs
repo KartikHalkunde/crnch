@@ -11,7 +11,7 @@ use compression::CompressionLevel;
 
 #[derive(Parser)]
 #[command(name = "crnch")]
-#[command(about = "Squeeze your files. Fast.", version = "1.0")]
+#[command(about = "Squeeze your files. Fast.")]
 #[command(author = "Kartik <innotelesoft.com>")]
 struct Cli {
     /// The file to compress

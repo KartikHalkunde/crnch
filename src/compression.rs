@@ -57,6 +57,18 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
     let start = Instant::now();
     let progress = PacmanProgress::new(1, "Optimizing JPG...");
     let tmp_optim = format!("{}.jpegoptim.tmp.jpg", output);
+    let original_size = get_file_size_kb(input);
+    if let Some(target) = target_kb {
+        if target >= original_size {
+            println!("Requested size ({}) KB is larger than or equal to original file size ({} KB). No compression performed.", target, original_size);
+            if Confirm::new().with_prompt("Keep original file?").default(true).interact()? {
+                fs::copy(input, output)?;
+                return Ok(CompResult{ algorithm: "No compression (requested size >= original)".to_string() });
+            } else {
+                return Err(anyhow!("Compression cancelled by user."));
+            }
+        }
+    }
 
     // If no size flag, use standard preset
     if target_kb.is_none() {
@@ -279,7 +291,18 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
 fn compress_png(input: &str, output: &str, target_kb: Option<u64>, level: Option<CompressionLevel>, nerd: bool) -> Result<CompResult> {
     let _start = Instant::now(); // suppress unused variable warning
     let _level = level; // suppress unused variable warning
-    let original_size = get_file_size_kb(input);
+        let original_size = get_file_size_kb(input);
+        if let Some(target) = target_kb {
+            if target >= original_size {
+                println!("Requested size ({}) KB is larger than or equal to original file size ({} KB). No compression performed.", target, original_size);
+                if Confirm::new().with_prompt("Keep original file?").default(true).interact()? {
+                    fs::copy(input, output)?;
+                    return Ok(CompResult{ algorithm: "No compression (requested size >= original)".to_string() });
+                } else {
+                    return Err(anyhow!("Compression cancelled by user."));
+                }
+            }
+        }
     // Removed unused nerd_stats variable
     
     // Use a single PacmanProgress bar for normal mode, always 100 steps
@@ -541,6 +564,17 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, level: Option
     let total_start = Instant::now();
     let original_size = get_file_size_kb(input);
     let mut _gs_calls: u32 = 0;
+    if let Some(target) = target_kb {
+        if target >= original_size {
+            println!("Requested size ({}) KB is larger than or equal to original file size ({} KB). No compression performed.", target, original_size);
+            if Confirm::new().with_prompt("Keep original file?").default(true).interact()? {
+                fs::copy(input, output)?;
+                return Ok(CompResult{ algorithm: "No compression (requested size >= original)".to_string() });
+            } else {
+                return Err(anyhow!("Compression cancelled by user."));
+            }
+        }
+    }
 
     if target_kb.is_none() {
         // Use standard compression (Ghostscript /printer preset)
