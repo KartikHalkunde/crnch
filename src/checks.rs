@@ -4,7 +4,7 @@ use which::which;
 use os_info;
 
 pub fn check_dependencies() -> Result<()> {
-    let tools = ["gs", "magick", "pngquant"];
+    let tools = ["gs", "magick", "pngquant", "jpegoptim", "oxipng"];
     let mut missing_tools = Vec::new();
 
     // 1. Check for binaries

@@ -1,18 +1,17 @@
 mod checks;
 mod compression;
 mod logger;
+mod utils;
 
 use clap::Parser;
-use colored::*;
-use dialoguer::{theme::ColorfulTheme, Select};
 use regex::Regex;
 use std::path::Path;
 use compression::CompressionLevel;
 
 #[derive(Parser)]
 #[command(name = "crnch")]
-#[command(about = "Squeeze your files. Fast.")]
-#[command(author = "Kartik <innotelesoft.com>")]
+#[command(about = "Squeeze your files. Fast.", version)]
+#[command(author = "Kartik <kartikhalkunde26@gmail.com>")]
 struct Cli {
     /// The file to compress
     file: String,
@@ -29,9 +28,17 @@ struct Cli {
     #[arg(short, long)]
     output: Option<String>,
 
-    /// Enable nerd mode (detailed technical output)
-    #[arg(long, visible_alias = "verbose", short = 'v')]
+    /// Verbosity level (-v=verbose, -vv=nerd mode)
+    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    /// Enable nerd mode (detailed technical output, same as -vv)
+    #[arg(long)]
     nerd: bool,
+
+    /// Assume yes to all prompts (non-interactive mode)
+    #[arg(short = 'y', long)]
+    yes: bool,
 }
 
 fn main() {
@@ -41,10 +48,12 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mut cli = Cli::parse();
+    let cli = Cli::parse();
 
-    // Set nerd mode globally
-    logger::set_nerd_mode(cli.nerd);
+    // Set verbosity level: --nerd = 3, -vv = 3, -v = 2, default = 1
+    let verbosity = if cli.nerd { 3 } else { cli.verbose.saturating_add(1).min(3) };
+    logger::set_verbosity(verbosity);
+    let is_nerd = verbosity >= 3;
 
     // 2. If no size/level provided, just do lossless compression (oxipng) without prompt
 
@@ -57,7 +66,22 @@ fn main() {
     }
 
     let output_path = match cli.output {
-        Some(p) => p,
+        Some(ref p) => {
+            if p.starts_with("/etc/") || p.starts_with("/sys/") {
+                logger::log_error("Cannot write to system directories");
+                std::process::exit(1);
+            }
+            if Path::new(p).exists() {
+                if !dialoguer::Confirm::new()
+                    .with_prompt(format!("Overwrite {}?", p))
+                    .default(false)
+                    .interact()
+                    .unwrap_or(false) {
+                    std::process::exit(0);
+                }
+            }
+            p.clone()
+        },
         None => {
             let stem = input_path.file_stem().unwrap().to_str().unwrap();
             let ext = input_path.extension().unwrap().to_str().unwrap().to_lowercase();
@@ -71,19 +95,10 @@ fn main() {
         .unwrap_or(0);
 
     // Parse target for nerd mode header
-    let target_kb: Option<u64> = cli.size.as_ref().and_then(|s| {
-        let re = Regex::new(r"(?i)^(\d+(?:\.\d+)?)(k|m|kb|mb)?$").ok()?;
-        let caps = re.captures(s)?;
-        let val: f64 = caps[1].parse().ok()?;
-        let unit = caps.get(2).map_or("k", |m| m.as_str()).to_lowercase();
-        match unit.as_str() {
-            "m" | "mb" => Some((val * 1024.0) as u64),
-            _ => Some(val as u64),
-        }
-    });
+    let target_kb: Option<u64> = cli.size.as_ref().and_then(|s| utils::parse_size(s));
 
     // Start logging
-    if cli.nerd {
+    if is_nerd {
         logger::nerd_header();
         logger::nerd_file_info(&cli.file, input_size_kb, target_kb);
     } else {
@@ -99,14 +114,27 @@ fn main() {
     let level_option = cli.level;
 
     // 4. Run Compression
-    match compression::compress_file(&cli.file, &output_path, size_option.clone(), level_option, cli.nerd) {
-        Ok(_) => {
+    match compression::compress_file(&cli.file, &output_path, size_option.clone(), level_option, is_nerd, cli.yes) {
+        Ok(result) => {
             if let Ok(meta_new) = std::fs::metadata(&output_path) {
                 let new_kb = meta_new.len() / 1024;
                 
-                if !cli.nerd {
+                if !is_nerd {
                     logger::log_done();
-                    logger::log_result(&cli.file, &output_path, input_size_kb, new_kb);
+                    
+                    // Use enhanced summary with timing in verbose mode
+                    if verbosity >= 2 {
+                        logger::log_summary(
+                            &cli.file, 
+                            &output_path, 
+                            input_size_kb, 
+                            new_kb, 
+                            Some(&result.algorithm),
+                            Some(result.time_ms)
+                        );
+                    } else {
+                        logger::log_result(&cli.file, &output_path, input_size_kb, new_kb);
+                    }
                     
                     // Validation check
                     if let Some(target_str) = size_option.as_ref() {
@@ -122,6 +150,9 @@ fn main() {
                 }
             }
         },
-        Err(e) => logger::log_error(&format!("Failed: {}", e)),
+        Err(e) => {
+            logger::log_error(&format!("Failed: {}", e));
+            std::process::exit(1);
+        }
     }
 }

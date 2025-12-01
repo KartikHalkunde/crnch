@@ -1,18 +1,29 @@
 use colored::*;
 use std::io::{self, Write};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::process::Command;
 use std::path::Path;
+use std::sync::atomic::{AtomicU8, Ordering};
 
-// Global nerd mode flag (set once at startup)
-static mut NERD_MODE: bool = false;
+// Verbosity levels: 0=quiet, 1=normal, 2=verbose, 3=nerd
+static VERBOSITY: AtomicU8 = AtomicU8::new(1);
 
+pub fn set_verbosity(level: u8) {
+    VERBOSITY.store(level, Ordering::Relaxed);
+}
+
+pub fn get_verbosity() -> u8 {
+    VERBOSITY.load(Ordering::Relaxed)
+}
+
+// Legacy compatibility
+#[allow(dead_code)]
 pub fn set_nerd_mode(enabled: bool) {
-    unsafe { NERD_MODE = enabled; }
+    set_verbosity(if enabled { 3 } else { 1 });
 }
 
 pub fn is_nerd_mode() -> bool {
-    unsafe { NERD_MODE }
+    get_verbosity() >= 3
 }
 
 // ==================== PACMAN PROGRESS BAR ====================
@@ -45,23 +56,25 @@ impl PacmanProgress {
 
     fn render(&self) {
         if is_nerd_mode() { return; } // No progress bar in nerd mode
-        
+
         let progress = if self.total > 0 {
             self.current as f64 / self.total as f64
         } else {
             0.0
         };
-        
+
         let pacman_pos = (progress * self.width as f64) as usize;
-        
+
         // Build the bar: spaces behind pacman, C for pacman, dots ahead
         let behind = " ".repeat(pacman_pos);
         let pacman = "C";
         let ahead_count = self.width.saturating_sub(pacman_pos + 1);
         let ahead = ".".repeat(ahead_count);
-        
+
         let percent = (progress * 100.0) as u64;
-        
+
+        // Clear the line before printing
+        print!("\r{}", " ".repeat(80));
         print!("\r   [{}{}{}] {}% {}   ", 
             behind, 
             pacman.yellow(), 
@@ -115,16 +128,132 @@ pub fn log_done() {
 pub fn log_result(input_path: &str, output_path: &str, old_kb: u64, new_kb: u64) {
     if is_nerd_mode() { return; }
     
-    let reduction = if old_kb > 0 && new_kb <= old_kb {
-        ((old_kb - new_kb) as f64 / old_kb as f64 * 100.0) as u64
-    } else { 0 };
+    log_summary(input_path, output_path, old_kb, new_kb, None, None);
+}
 
-    println!("   Input:  {} ({}KB)", input_path, old_kb);
-    println!("   Output: {} ({}KB)", output_path, new_kb.to_string().green());
-    if new_kb > old_kb {
-        println!("   Saved:  0% (file grew, no savings)");
+/// Enhanced summary output with detailed compression statistics
+pub fn log_summary(
+    input_path: &str, 
+    output_path: &str, 
+    old_kb: u64, 
+    new_kb: u64, 
+    method: Option<&str>,
+    time_ms: Option<u128>
+) {
+    if is_nerd_mode() { return; }
+    
+    let reduction_pct = if old_kb > 0 && new_kb <= old_kb {
+        (old_kb - new_kb) as f64 / old_kb as f64 * 100.0
+    } else { 0.0 };
+    
+    let saved_kb = if new_kb <= old_kb { old_kb - new_kb } else { 0 };
+    let ratio = if new_kb > 0 { old_kb as f64 / new_kb as f64 } else { 1.0 };
+    
+    // Format file sizes nicely
+    let old_size_str = format_size(old_kb);
+    let new_size_str = format_size(new_kb);
+    
+    println!();
+    println!("{}", "┌─────────────────────────────────────────────────────────┐".dimmed());
+    println!("{}", "│                    COMPRESSION SUMMARY                  │".cyan().bold());
+    println!("{}", "├─────────────────────────────────────────────────────────┤".dimmed());
+    
+    // Input/Output files
+    let in_name = Path::new(input_path).file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| input_path.to_string());
+    let out_name = Path::new(output_path).file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| output_path.to_string());
+    
+    println!("  {} {}", "Input: ".dimmed(), in_name);
+    println!("  {} {}", "Output:".dimmed(), out_name.green());
+    
+    println!("{}", "├─────────────────────────────────────────────────────────┤".dimmed());
+    
+    // Size info with visual bar
+    let bar_width = 30;
+    let (filled, bar_color) = if new_kb > old_kb {
+        // File grew - show empty bar in red
+        (0, "red")
+    } else if old_kb > 0 {
+        // Normal compression - green bar based on compression ratio
+        let ratio = (new_kb as f64 / old_kb as f64 * bar_width as f64).round() as usize;
+        (ratio.min(bar_width), "green")
     } else {
-        println!("   Saved:  {}%", reduction.to_string().green());
+        (bar_width, "green")
+    };
+    let empty = bar_width - filled;
+    
+    let bar = if bar_color == "red" {
+        format!("{}{}",
+            "░".repeat(empty).red(),
+            "█".repeat(filled).red()
+        )
+    } else {
+        format!("{}{}",
+            "█".repeat(filled).green(),
+            "░".repeat(empty).dimmed()
+        )
+    };
+    
+    println!("  {} {} → {}", "Size:  ".dimmed(), old_size_str, new_size_str.green());
+    println!("         [{}]", bar);
+    
+    // Statistics
+    if new_kb > old_kb {
+        let increase_msg = if old_kb == 0 {
+            "file grew from < 1 KB".to_string()
+        } else {
+            let increase_pct = (new_kb - old_kb) as f64 / old_kb as f64 * 100.0;
+            format!("file grew by {:.1}%", increase_pct)
+        };
+        println!("  {} {} ({})", 
+            "Saved: ".dimmed(), 
+            "0%".yellow(),
+            increase_msg.yellow()
+        );
+    } else {
+        println!("  {} {} ({} saved, {:.2}:1 ratio)", 
+            "Saved: ".dimmed(),
+            format!("{:.1}%", reduction_pct).green().bold(),
+            format_size(saved_kb).green(),
+            ratio
+        );
+    }
+    
+    // Optional method info (verbose mode)
+    if let Some(m) = method {
+        println!("  {} {}", "Method:".dimmed(), m.cyan());
+    }
+    
+    // Optional timing info
+    if let Some(ms) = time_ms {
+        let time_str = if ms >= 1000 {
+            format!("{:.2}s", ms as f64 / 1000.0)
+        } else {
+            format!("{}ms", ms)
+        };
+        println!("  {} {}", "Time:  ".dimmed(), time_str);
+    }
+    
+    println!("{}", "└─────────────────────────────────────────────────────────┘".dimmed());
+}
+
+#[allow(dead_code)]
+pub fn nerd_final_result(_dpi: u64, _old_kb: u64, _new_kb: u64, _iterations: usize, _time_ms: u128) {
+    // Placeholder for potential future use
+}
+
+/// Format size in human-readable form
+fn format_size(kb: u64) -> String {
+    if kb >= 1024 {
+        format!("{:.1} MB", kb as f64 / 1024.0)
+    } else if kb == 0 {
+        // File is less than 1KB, show as bytes
+        format!("< 1 KB")
+    } else {
+        format!("{} KB", kb)
     }
 }
 
@@ -150,16 +279,17 @@ pub fn nerd_header() {
     let cpu_info = get_cpu_info();
     let mem_info = get_mem_info();
     
-    println!("\n{}", "=".repeat(70).dimmed());
-    println!("{}", "[SYSTEM INFO]".cyan().bold());
-    println!("   |- OS: {}", os_info);
-    println!("   |- Arch: {}", arch);
-    println!("   |- CPU: {}", cpu_info);
-    println!("   |- RAM: {}", mem_info);
-    println!("   |- Ghostscript: {}", gs_version);
-    println!("   |- ImageMagick: {}", magick_version);
-    println!("   '- pngquant: {}", pngquant_version);
-    println!("{}", "=".repeat(70).dimmed());
+    println!("\n{}", "╔═══════════════════════════════════════════════════════════════════════╗".cyan());
+    println!("{}", "║                          SYSTEM INFORMATION                           ║".cyan().bold());
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".cyan());
+    println!("  {} {:<25} {} {}", "OS:".dimmed(), os_info, "Arch:".dimmed(), arch);
+    println!("  {} {}", "CPU:".dimmed(), cpu_info);
+    println!("  {} {}", "RAM:".dimmed(), mem_info);
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".cyan());
+    println!("  {} {:<40}", "Ghostscript:".green(), gs_version);
+    println!("  {} {:<40}", "ImageMagick:".green(), magick_version);
+    println!("  {} {:<40}", "pngquant:   ".green(), pngquant_version);
+    println!("{}", "╚═══════════════════════════════════════════════════════════════════════╝".cyan());
 }
 
 pub fn nerd_file_info(input: &str, size_kb: u64, target_kb: Option<u64>) {
@@ -170,28 +300,57 @@ pub fn nerd_file_info(input: &str, size_kb: u64, target_kb: Option<u64>) {
     let ext = path.extension().map(|e| e.to_string_lossy().to_uppercase()).unwrap_or_default();
     let abs_path = std::fs::canonicalize(input).map(|p| p.display().to_string()).unwrap_or(input.to_string());
     
-    println!("\n{}", "[INPUT FILE]".cyan().bold());
-    println!("   |- File: {}", filename);
-    println!("   |- Type: {}", ext);
-    println!("   |- Path: {}", abs_path.dimmed());
-    println!("   |- Size: {} KB ({} bytes)", size_kb, size_kb * 1024);
+    println!("\n{}", "╔═══════════════════════════════════════════════════════════════════════╗".cyan());
+    println!("{}", "║                            INPUT FILE                                 ║".cyan().bold());
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".cyan());
+    println!("  {} {}", "Filename:".dimmed(), filename.green());
+    println!("  {} {}", "Type:    ".dimmed(), ext.yellow());
+    println!("  {} {}", "Path:    ".dimmed(), abs_path.dimmed());
+    
+    // Show actual file size in bytes if we have it
+    if let Ok(metadata) = std::fs::metadata(input) {
+        let bytes = metadata.len();
+        if bytes < 1024 {
+            println!("  {} {} bytes", "Size:    ".dimmed(), bytes);
+        } else if bytes < 1024 * 1024 {
+            println!("  {} {:.2} KB ({} bytes)", "Size:    ".dimmed(), bytes as f64 / 1024.0, bytes);
+        } else {
+            println!("  {} {:.2} MB ({} bytes)", "Size:    ".dimmed(), bytes as f64 / (1024.0 * 1024.0), bytes);
+        }
+    } else {
+        println!("  {} {} KB (approx)", "Size:    ".dimmed(), size_kb);
+    }
+    
+    // Try to get image dimensions for JPG/PNG
+    if ext == "JPG" || ext == "JPEG" || ext == "PNG" {
+        if let Some((width, height)) = get_image_dimensions(input) {
+            println!("  {} {}x{} pixels", "Dimensions:".dimmed(), width, height);
+            let megapixels = (width * height) as f64 / 1_000_000.0;
+            println!("  {} {:.2} MP", "Resolution:".dimmed(), megapixels);
+        }
+    }
+    
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".cyan());
     
     if let Some(target) = target_kb {
         let reduction = if size_kb > 0 && size_kb > target {
             ((size_kb - target) as f64 / size_kb as f64 * 100.0) as u64
         } else { 0 };
         let ratio_needed = if target > 0 { size_kb as f64 / target as f64 } else { 0.0 };
-        println!("   |- Target: {} KB", target);
-        println!("   |- Reduction Needed: {}%", reduction);
-        println!("   '- Compression Ratio Needed: {:.2}:1", ratio_needed);
+        println!("  {} {} KB", "Target:  ".dimmed(), target.to_string().cyan());
+        println!("  {} {}%", "Reduction:".dimmed(), reduction.to_string().yellow());
+        println!("  {} {:.2}:1", "Ratio:   ".dimmed(), ratio_needed.to_string().green());
     } else {
-        println!("   '- Target: Auto (preset-based)");
+        println!("  {} Auto (preset-based)", "Target:  ".dimmed());
     }
+    println!("{}", "╚═══════════════════════════════════════════════════════════════════════╝".cyan());
 }
 
 pub fn nerd_stage(stage_num: u32, name: &str) {
     if !is_nerd_mode() { return; }
-    println!("\n{}", format!("[STAGE {}] {}", stage_num, name).yellow().bold());
+    println!("\n{}", "─".repeat(75).dimmed());
+    println!("{} {}", format!("[STAGE {}]", stage_num).yellow().bold(), name.bold());
+    println!("{}", "─".repeat(75).dimmed());
 }
 
 pub fn nerd_algo(name: &str, complexity: &str, details: &str) {
@@ -226,56 +385,55 @@ pub fn nerd_attempt(attempt: u32, max: u32, dpi: u64, size_kb: u64, target_kb: u
 
 pub fn nerd_result(label: &str, value: &str, is_last: bool) {
     if !is_nerd_mode() { return; }
-    let prefix = if is_last { "   '-" } else { "   |-" };
-    println!("{} {}: {}", prefix, label, value);
+    let prefix = if is_last { "  └─" } else { "  ├─" };
+    if value.is_empty() {
+        println!("{} {}", prefix.dimmed(), label.yellow());
+    } else {
+        println!("{} {} {}", prefix.dimmed(), format!("{}:", label).dimmed(), value);
+    }
 }
 
-pub fn nerd_final_result(dpi: u64, old_kb: u64, new_kb: u64, iterations: u32, max_iterations: u32, total_time: Duration, gs_calls: u32, output: &str) {
+pub fn nerd_output_summary(_input: &str, output: &str, old_kb: u64, new_kb: u64, method: &str, time_s: f64) {
     if !is_nerd_mode() { return; }
     
-    let reduction = if old_kb > 0 {
+    let reduction_pct = if old_kb > 0 && new_kb <= old_kb {
         (old_kb - new_kb) as f64 / old_kb as f64 * 100.0
     } else { 0.0 };
     
-    let ratio = if new_kb > 0 {
-        old_kb as f64 / new_kb as f64
-    } else { 0.0 };
+    let ratio = if new_kb > 0 { old_kb as f64 / new_kb as f64 } else { 1.0 };
+    let saved_kb = if new_kb <= old_kb { old_kb - new_kb } else { 0 };
     
-    let efficiency = if max_iterations > 0 {
-        (max_iterations - iterations) as f64 / max_iterations as f64 * 100.0
-    } else { 0.0 };
+    println!("\n{}", "╔═══════════════════════════════════════════════════════════════════════╗".green());
+    println!("{}", "║                         COMPRESSION RESULT                            ║".green().bold());
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".green());
     
-    let avg_time_per_call = if gs_calls > 0 {
-        total_time.as_millis() as f64 / gs_calls as f64
-    } else { 0.0 };
+    let out_name = Path::new(output).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| output.to_string());
+    println!("  {} {}", "Output File:".dimmed(), out_name.green());
+    println!("  {} {}", "Method:     ".dimmed(), method.cyan());
+    println!("{}", "╠═══════════════════════════════════════════════════════════════════════╣".green());
     
-    // Quality assessment based on DPI
-    let quality = if dpi >= 300 {
-        "Excellent (print-ready)".green()
-    } else if dpi >= 150 {
-        "Good (screen quality)".green()
-    } else if dpi >= 72 {
-        "Fair (web quality)".yellow()
+    let old_size_str = if old_kb >= 1024 {
+        format!("{:.2} MB", old_kb as f64 / 1024.0)
+    } else if old_kb == 0 {
+        "< 1 KB".to_string()
     } else {
-        "Low (may be pixelated)".red()
+        format!("{} KB", old_kb)
     };
     
-    println!("\n{}", "=".repeat(70).dimmed());
-    println!("{}", "[COMPRESSION RESULT]".green().bold());
-    println!("   |- Optimal DPI: {}", dpi.to_string().cyan());
-    println!("   |- Quality: {}", quality);
-    println!("   |- Size: {} KB -> {} KB", old_kb, new_kb.to_string().green());
-    println!("   |- Reduction: {:.1}%", reduction);
-    println!("   |- Compression Ratio: {:.2}:1", ratio);
-    println!("   |");
-    println!("   |- {} {}", "[PERFORMANCE]".cyan(), "".dimmed());
-    println!("   |- Iterations: {}/{} ({:.0}% early-exit)", iterations, max_iterations, efficiency);
-    println!("   |- GS Calls: {}", gs_calls);
-    println!("   |- Total Time: {:.2}s", total_time.as_secs_f64());
-    println!("   |- Avg per GS call: {:.0}ms", avg_time_per_call);
-    println!("   |");
-    println!("   '- Output: {}", output.green());
-    println!("{}", "=".repeat(70).dimmed());
+    let new_size_str = if new_kb >= 1024 {
+        format!("{:.2} MB", new_kb as f64 / 1024.0)
+    } else if new_kb == 0 {
+        "< 1 KB".to_string()
+    } else {
+        format!("{} KB", new_kb)
+    };
+    
+    println!("  {} {} → {}", "Size:       ".dimmed(), old_size_str, new_size_str.green());
+    println!("  {} {:.1}% ({} KB saved)", "Reduction:  ".dimmed(), reduction_pct, saved_kb);
+    println!("  {} {:.2}:1", "Ratio:      ".dimmed(), ratio);
+    println!("  {} {:.2}s", "Time:       ".dimmed(), time_s);
+    
+    println!("{}", "╚═══════════════════════════════════════════════════════════════════════╝".green());
 }
 
 // Binary search visualization helper
@@ -470,4 +628,23 @@ fn get_tool_version(tool: &str, args: &[&str]) -> String {
             out.lines().next().unwrap_or("Unknown").trim().to_string()
         })
         .unwrap_or_else(|_| "Not found".red().to_string())
+}
+
+fn get_image_dimensions(path: &str) -> Option<(u32, u32)> {
+    // Try using ImageMagick's identify command
+    Command::new("magick")
+        .args(["identify", "-format", "%w %h", path])
+        .output()
+        .ok()
+        .and_then(|output| {
+            let s = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<&str> = s.trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                let width = parts[0].parse::<u32>().ok()?;
+                let height = parts[1].parse::<u32>().ok()?;
+                Some((width, height))
+            } else {
+                None
+            }
+        })
 }
