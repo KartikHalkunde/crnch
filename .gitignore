@@ -39,3 +39,18 @@ QUICK_REFERENCE.md
 # OS
 .DS_Store
 Thumbs.db
+
+# AUR build artifacts
+pkg/
+src/
+*.pkg.tar.zst
+*.tar.gz
+.SRCINFO
+
+# Release artifacts
+release/
+
+# AUR package files (only needed in AUR repos, not in main repo)
+PKGBUILD
+PKGBUILD-bin
+AUR_SUBMISSION.md
