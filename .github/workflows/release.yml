@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: crnch
+            asset_name: crnch-x86_64-linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: crnch
+            asset_name: crnch-x86_64-linux-musl
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+    
+    - name: Install musl tools
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt-get install -y musl-tools
+    
+    - name: Build
+      run: cargo build --release --locked --target ${{ matrix.target }}
+    
+    - name: Strip binary
+      run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+    
+    - name: Create tarball
+      run: |
+        mkdir -p release
+        cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} release/crnch
+        cp LICENSE README.md release/
+        cd release
+        tar czf ${{ matrix.asset_name }}.tar.gz crnch LICENSE README.md
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./release/${{ matrix.asset_name }}.tar.gz
+        asset_name: ${{ matrix.asset_name }}.tar.gz
+        asset_content_type: application/gzip
