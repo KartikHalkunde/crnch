@@ -1,7 +1,6 @@
 use anyhow::Result;
 use colored::*;
 use which::which;
-use os_info;
 
 pub fn check_dependencies() -> Result<()> {
     let tools = ["gs", "magick", "pngquant", "jpegoptim", "oxipng"];

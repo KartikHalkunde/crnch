@@ -112,20 +112,11 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
     // If no size flag, use standard preset
     if target_kb.is_none() {
         if nerd {
-            use colored::*;
-            println!("");
-            println!("{}", "====================[ JPG COMPRESSION: NERD MODE ]====================".bold().yellow());
-            println!("{}", "[INPUT]".bold().cyan());
-            println!("   |- File: {}", input.cyan());
-            println!("   |- Type: {}", "JPG".cyan());
-            println!("   |- Size: {} KB", get_file_size_kb(input).to_string().green());
-            println!("   '- Target: {}", "Auto (60-95% of original size)".green());
-            println!("");
-            println!("{}", "[STAGE 1] JPEG Lossless Optimization".bold().yellow());
-            println!("   |- Tool: {}", "jpegoptim".cyan());
-            println!("   |- Complexity: {}", "O(n) I/O bound".green());
-            println!("   |- Strategy: {}", "Stripping metadata and optimizing".green());
-            println!("   |- Cmd: {}", format!("jpegoptim --strip-all --dest=. {}", input).cyan());
+            logger::nerd_stage(1, "JPEG Lossless Optimization");
+            logger::nerd_result("Tool", "jpegoptim", false);
+            logger::nerd_result("Complexity", "O(n) I/O bound", false);
+            logger::nerd_result("Strategy", "Stripping metadata and optimizing", false);
+            logger::nerd_cmd(&format!("jpegoptim --strip-all --dest=. {}", input));
         }
         // Run jpegoptim for lossless optimization
         let status = Command::new("jpegoptim")
@@ -137,13 +128,13 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             .stderr(if nerd { std::process::Stdio::inherit() } else { std::process::Stdio::null() })
             .status()?;
         if !status.success() {
-            if nerd { logger::nerd_result("jpegoptim failed, skipping to magick stage", "", true); }
+            if nerd { logger::nerd_result("Status", "jpegoptim failed, skipping to magick stage", true); }
             // Fallback: use input directly for magick
             fs::copy(input, &tmp_optim)?;
         }
         let optim_size = get_file_size_kb(&tmp_optim);
         if nerd {
-            println!("   |- Output Size after jpegoptim: {} KB", optim_size);
+            logger::nerd_result("Output Size", &format!("{} KB", optim_size), true);
         }
         // Adaptive target compression: try 60%, then 65%, ..., up to 95% of original size
         let original_size = get_file_size_kb(input);
@@ -155,13 +146,12 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             let target_kb = original_size * percent / 100;
             let try_out = if percent == 60 { output.to_string() } else { format!("{}.tgt{}p.jpg", output, percent) };
             if nerd {
-                println!("");
-                println!("{}", "[STAGE 2] JPEG Magick Compression".bold().yellow());
-                println!("   |- Tool: {}", "ImageMagick".cyan());
-                println!("   |- Complexity: {}", "O(n) I/O bound".green());
-                println!("   |- Strategy: {}", "Targeted lossy compression".green());
-                println!("   |- Cmd: {}", format!("magick ... -define jpeg:extent={}KB -sampling-factor 4:4:4 -interlace Plane -strip {} {}", target_kb, &tmp_optim, &try_out).cyan());
-                println!("   |- Target: {} KB ({}% of original)", target_kb.to_string().green(), percent.to_string().green());
+                logger::nerd_stage(2, "JPEG Lossy Compression");
+                logger::nerd_result("Tool", "ImageMagick", false);
+                logger::nerd_result("Complexity", "O(n) I/O bound", false);
+                logger::nerd_result("Strategy", "Targeted lossy compression", false);
+                logger::nerd_result("Target", &format!("{} KB ({}% of original)", target_kb, percent), false);
+                logger::nerd_cmd(&format!("magick ... -define jpeg:extent={}KB -sampling-factor 4:4:4 -interlace Plane -strip {} {}", target_kb, &tmp_optim, &try_out));
             }
             let mut cmd = Command::new("magick");
             cmd.arg(&tmp_optim)
@@ -175,7 +165,8 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             let out_size = get_file_size_kb(&try_out);
             tried_targets.push(try_out.clone());
             if nerd {
-                println!("   |- Result: {} KB {}", out_size, if out_size <= target_kb {"(Hit!)"} else {"(Miss)"});
+                let hit_miss = if out_size <= target_kb {"Hit!"} else {"Miss"};
+                logger::nerd_result("Result", &format!("{} KB ({})", out_size, hit_miss), true);
             }
             if out_size <= target_kb {
                 final_size = out_size;
@@ -196,28 +187,15 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
         progress.finish();
         let total_time = start.elapsed().as_secs_f64();
         if nerd {
-            println!("");
-            println!("{}", "====================[ JPG COMPRESSION RESULT ]====================".bold().yellow());
-            println!("   |- Path: {}", output.cyan());
-            println!("   |- Type: {}", "JPG".cyan());
-            println!("   |- Original Size: {} KB", original_size.to_string().green());
-            println!("   |- Final Size: {} KB", final_size.to_string().green());
-            if success {
-                let percent_reduced = 100.0 - (final_size as f64 / original_size as f64 * 100.0);
-                println!("   |- Total Compression: {:.2}%", percent_reduced.to_string().green());
-            } else {
-                println!("   |- Total Compression: {}", "0% (could not reach any target)".red());
-                println!("   |- Note: {}", "This image cannot be compressed to the desired size (60-95% of original). Keeping original.".red());
-            }
-            println!("   '- Total Time: {:.2}s", total_time.to_string().cyan());
+            logger::nerd_output_summary(input, output, original_size, final_size, "jpegoptim + magick (Standard Preset)", total_time);
         }
         if success {
-            return Ok(result_with_time(format!("jpegoptim + magick (Standard Preset, target {} KB)", final_target), start));
+            Ok(result_with_time(format!("jpegoptim + magick (Standard Preset, target {} KB)", final_target), start))
         } else {
             // Inform user compression not possible
             println!("This image cannot be compressed to the desired size (60-95% of original). Keeping original.");
             fs::copy(input, output)?;
-            return Ok(result_with_time("jpegoptim + magick (No reduction, original kept)", start));
+            Ok(result_with_time("jpegoptim + magick (No reduction, original kept)", start))
         }
     } else {
         // Original lossy/target logic for JPG compression
@@ -246,17 +224,19 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             logger::nerd_result("Output Size after jpegoptim", &format!("{} KB", optim_size), false);
         }
         // If target met, use jpegoptim result
-        if target_kb.is_some() && optim_size <= target_kb.unwrap() {
-            fs::copy(&tmp_optim, output)?;
-            fs::remove_file(&tmp_optim).ok();
-            progress.finish();
-            if nerd {
-                let original_size = get_file_size_kb(input);
-                let final_size = get_file_size_kb(output);
-                let total_time = start.elapsed().as_secs_f64();
-                logger::nerd_output_summary(input, output, original_size, final_size, "jpegoptim (Lossless)", total_time);
+        if let Some(target) = target_kb {
+            if optim_size <= target {
+                fs::copy(&tmp_optim, output)?;
+                fs::remove_file(&tmp_optim).ok();
+                progress.finish();
+                if nerd {
+                    let original_size = get_file_size_kb(input);
+                    let final_size = get_file_size_kb(output);
+                    let total_time = start.elapsed().as_secs_f64();
+                    logger::nerd_output_summary(input, output, original_size, final_size, "jpegoptim (Lossless)", total_time);
+                }
+                return Ok(result_with_time("jpegoptim (Lossless)", start));
             }
-            return Ok(result_with_time("jpegoptim (Lossless)", start));
         }
 
         // Stage 2: Lossy compression with ImageMagick
@@ -297,10 +277,17 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             if nerd {
                 let hit = if current_size <= target { "Hit!" } else { "Miss" };
                 logger::nerd_result("Target", &format!("{} KB", target), false);
-                logger::nerd_result("Result", &format!("{} KB ({})", current_size, hit), false);
+                logger::nerd_result("Result", &format!("{} KB ({})", current_size, hit), true);
             }
             if current_size > target {
-                return handle_fallback_options(output, target, current_size, nerd, "JPG");
+                let fallback_result = handle_fallback_options(output, target, current_size, nerd, "JPG");
+                if nerd {
+                    let final_size = get_file_size_kb(output);
+                    let original_size = get_file_size_kb(input);
+                    let total_time = start.elapsed().as_secs_f64();
+                    logger::nerd_output_summary(input, output, original_size, final_size, "jpegoptim + ImageMagick", total_time);
+                }
+                return fallback_result;
             }
         }
 
@@ -310,7 +297,7 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             let total_time = start.elapsed().as_secs_f64();
             logger::nerd_output_summary(input, output, original_size, final_size, "jpegoptim + ImageMagick", total_time);
         }
-        return Ok(result_with_time("jpegoptim + ImageMagick", start));
+        Ok(result_with_time("jpegoptim + ImageMagick", start))
     }
 }
 
@@ -357,7 +344,7 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
     // No progress bar update here; only animate in the lossless branch below
     if nerd {
         let oxi_size = get_file_size_kb(&oxi_out);
-        let meta_removed = if oxi_size < original_size { original_size - oxi_size } else { 0 };
+        let meta_removed = original_size.saturating_sub(oxi_size);
         logger::nerd_result("Metadata Removed", &format!("{} KB", meta_removed), false);
         logger::nerd_result("Output Size after oxipng", &format!("{} KB", oxi_size), false);
         let reduction = if original_size > 0 { (original_size - oxi_size) as f64 / original_size as f64 * 100.0 } else { 0.0 };
@@ -427,20 +414,18 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
             continue;
         }
         let pq_size = get_file_size_kb(&pq_out);
-        let delta = pq_size as i64 - target as i64;
-        let delta_str = if delta > 0 { format!("+{} KB", delta) } else { format!("{} KB", delta) };
+        let action = if pq_size <= target { "min=mid+1" } else { "max=mid-1" };
         if nerd {
-            logger::nerd_result(&format!("[{}] Quality {}% -> {} KB [{}] ({}) | {}ms | next: {}", attempts, mid_q, pq_size, if pq_size <= target { "OK" } else { "XX" }, delta_str, elapsed_ms, if pq_size <= target { "min=mid+1" } else { "max=mid-1" }), "", false);
+            logger::nerd_quality_attempt(attempts, 8, mid_q as u8, pq_size, target, elapsed_ms, action);
         }
         if pq_size <= target {
             best_candidate = Some((mid_q as u8, pq_size));
             min_q = mid_q + 1; // Try higher quality
         } else {
-            if mid_q == 30 {
-                if nerd {
+            if mid_q == 30
+                && nerd {
                     logger::nerd_result("quality floor reached in pngquant, cannot compress further:", "", true);
                 }
-            }
             max_q = mid_q - 1; // Try lower quality
         }
     }
@@ -488,7 +473,7 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
         } else {
             logger::nerd_result("grayscale conversion not required for this image.:", "", true);
         }
-        println!(""); // Add blank line after stage 3 and warning
+        println!(); // Add blank line after stage 3 and warning
     }
     let _gray_status = Command::new("magick")
         .arg(&oxi_out).arg("-colorspace").arg("Gray").arg("-depth").arg("8").arg(&gray_out)
@@ -497,6 +482,11 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
 
     // Branch A: Grayscale fits
     if gray_size <= target {
+        if let Some(ref mut bar) = progress {
+            bar.set(100);
+            bar.finish();
+        }
+        progress = None; // Clear progress bar reference
         let should_grayscale = if auto_yes {
             if nerd { println!("   [Auto-yes enabled, converting to grayscale]"); }
             true
@@ -523,6 +513,12 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
     let mut resize_input = &oxi_out;
 
     if gray_size < oxi_size {
+        // Finish progress bar before showing prompts
+        if let Some(ref mut bar) = progress {
+            bar.set(50);
+            bar.finish();
+        }
+        progress = None; // Clear progress bar reference
         // Grayscale is smaller, offer it as base for resizing
         let should_use_grayscale = if auto_yes {
             if nerd { println!("   [Auto-yes enabled, using grayscale for resizing]"); }
@@ -565,6 +561,12 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
             // else: proceed with color resize
         }
     } else {
+        // Finish progress bar before showing prompts
+        if let Some(ref mut bar) = progress {
+            bar.set(50);
+            bar.finish();
+        }
+        progress = None; // Clear progress bar reference
         // Gray is not smaller than oxi - ask about resizing color
         let should_resize = if auto_yes {
             if nerd { println!("   [Auto-yes enabled, resizing image]"); }
@@ -602,7 +604,7 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
         logger::nerd_result("Tool", "magick", false);
         logger::nerd_result("Strategy", "Resizing image dimentions using Binary search as Scale index(too lossy)", false);
         logger::nerd_result("Complexity", "O(log n)", false);
-        logger::nerd_cmd(&format!("magick <in> -resize <scale>% <out>"));
+        logger::nerd_cmd("magick <in> -resize <scale>% <out>");
     }
     let mut min_scale = 1;
     let mut max_scale = 100;
@@ -620,20 +622,9 @@ fn compress_png(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
         let elapsed_ms = t0.elapsed().as_millis();
         if status.success() {
             let size = get_file_size_kb(&resize_out);
-            let delta = size as i64 - target as i64;
+            let action = if size <= target { "min=mid+1" } else { "max=mid-1" };
             if nerd {
-                let sign = if delta >= 0 { "+" } else { "-" };
-                logger::nerd_result(&format!(
-                    "[{}] Scale {}% -> {} KB [{}] ({}{} KB) | {}ms | next: {}",
-                    attempts,
-                    mid_scale,
-                    size,
-                    if size <= target { "OK" } else { "XX" },
-                    sign,
-                    delta.abs(),
-                    elapsed_ms,
-                    if size <= target { "min=mid+1" } else { "max=mid-1" }
-                ), "", false);
+                logger::nerd_scale_attempt(attempts, 8, mid_scale as u8, size, target, elapsed_ms, action);
             }
             if size <= target {
                 best_scale = Some((mid_scale as u8, size));
@@ -707,21 +698,36 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
     }
 
     if target_kb.is_none() {
-        // Use standard compression (Ghostscript /printer preset)
-        let setting = "/printer";
+        // Smart preset selection based on file size
+        let preset = if original_size > 50_000 {
+            // Large files (>50MB): aggressive compression
+            "/ebook"
+        } else if original_size > 10_000 {
+            // Medium files (10-50MB): balanced compression
+            "/ebook"
+        } else if original_size > 1_000 {
+            // Small-medium files (1-10MB): moderate compression
+            "/printer"
+        } else {
+            // Small files (<1MB): light compression
+            "/printer"
+        };
+        
         if nerd {
-            logger::nerd_stage(1, "Standard Compression");
-            logger::nerd_algo("Ghostscript", "O(n) I/O bound", &format!("Preset: {}", setting));
+            logger::nerd_stage(1, "Smart Compression");
+            logger::nerd_result("Tool", "Ghostscript", false);
+            logger::nerd_result("Strategy", &format!("Preset-based compression ({})", preset), false);
+            logger::nerd_result("Reason", &format!("Selected {} for {} KB file", preset, original_size), false);
         }
-        let progress = PacmanProgress::new(1, "Compressing...");
-        run_gs(input, output, setting, None)?;
+        let progress = PacmanProgress::new(1, "Eating those bytes...");
+        run_gs(input, output, preset, None)?;
         progress.finish();
         if nerd {
             let total_time = total_start.elapsed().as_secs_f64();
             let final_size = get_file_size_kb(output);
-            logger::nerd_output_summary(input, output, original_size, final_size, &format!("Standard Compression ({})", setting), total_time);
+            logger::nerd_output_summary(input, output, original_size, final_size, &format!("Smart Compression ({})", preset), total_time);
         }
-        return Ok(result_with_time(format!("Standard Compression ({})", setting), total_start));
+        return Ok(result_with_time(format!("Smart Compression ({})", preset), total_start));
     }
 
     let target = target_kb.unwrap();
@@ -777,13 +783,7 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
         println!("Tip: Could not reach target size without destroying quality.\n   Try a higher size.");
         return Ok(result_with_time("Floor (Min Quality)", total_start));
     }
-    if nerd {
-        logger::nerd_stage(2, "Size Reduction");
-        logger::nerd_result("Tool", "Ghostscript", false);
-        logger::nerd_result("Strategy", "PDF compression using Binary search with range: 1-2400 DPI", false);
-        logger::nerd_result("Complexity", "O(log n) search iterations, O(n) compression per attempt", false);
-        logger::nerd_cmd("gs ... -dColorImageResolution=<dpi> ...");
-    }
+    
     // Smart DPI range based on compression ratio
     let compression_ratio = original_size as f64 / target as f64;
     let (mut min_dpi, mut max_dpi): (u64, u64) = match compression_ratio {
@@ -792,19 +792,26 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
         r if r > 2.0  => (100, 400),  // Moderate compression
         _             => (150, 600),  // Light compression
     };
+    
     if nerd {
+        logger::nerd_stage(2, "Size Reduction");
+        logger::nerd_result("Tool", "Ghostscript", false);
+        logger::nerd_result("Strategy", "PDF compression using Binary search with adaptive DPI range", false);
+        logger::nerd_result("Complexity", "O(log n) search iterations, O(n) compression per attempt", false);
+        logger::nerd_cmd("gs ... -dColorImageResolution=<dpi> ...");
         logger::nerd_result(
             "Smart DPI Range", 
-            &format!("{}-{} (ratio: {:.1}:1)", min_dpi, max_dpi, compression_ratio),
+            &format!("{}-{} DPI (ratio: {:.1}:1)", min_dpi, max_dpi, compression_ratio),
             false
         );
+        logger::nerd_result("Note", "Each iteration re-renders entire PDF (3-6s per attempt is normal)", false);
     }
     let mut best_dpi: u64 = 0;
     let mut best_size: u64 = 0;
     let mut found_valid = false;
     let max_iterations: u32 = 14;
     let mut attempts: u32 = 0;
-    let mut search_progress = PacmanProgress::new(14, "Optimizing DPI...");
+    let mut search_progress = PacmanProgress::new(14, "Eating those bytes...");
     while min_dpi <= max_dpi && attempts < max_iterations {
         attempts += 1;
         let mid_dpi = (min_dpi + max_dpi) / 2;
@@ -818,7 +825,7 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
             search_progress.set(attempts as u64 + 1);
             let action_str = if size <= target { "min=mid+1" } else { "max=mid-1" };
             if nerd {
-                logger::nerd_attempt(attempts as u32, 14, mid_dpi, size, target, iter_start.elapsed().as_millis(), action_str);
+                logger::nerd_attempt(attempts, 14, mid_dpi, size, target, iter_start.elapsed().as_millis(), action_str);
             }
             if size <= target {
                 fs::copy(&temp_output, output)?;
@@ -833,8 +840,13 @@ fn compress_pdf(input: &str, output: &str, target_kb: Option<u64>, _level: Optio
     }
     let _ = fs::remove_file(&temp_output);
     search_progress.finish();
+    
     if found_valid {
         if nerd {
+            println!();
+            println!("  {} Target achieved at {} DPI ({} KB)", "└─".cyan(), best_dpi.to_string().green(), best_size.to_string().green());
+            println!("     Compressing PDF at {} DPI to final output...", best_dpi.to_string().cyan());
+            println!();
             let total_time = total_start.elapsed().as_secs_f64();
             logger::nerd_output_summary(input, output, original_size, best_size, &format!("Ghostscript Binary Search ({} DPI)", best_dpi), total_time);
         } else if best_dpi < 50 {
@@ -869,9 +881,7 @@ fn handle_fallback_options(output: &str, target: u64, current_size: u64, nerd: b
             if gray_size <= target {
                 println!("   ✨ Grayscale worked! ({} KB)", gray_size);
                 return Ok(result_with_time(format!("{} + Grayscale", format), fallback_start));
-            } else {
-                if nerd { logger::nerd_result("Grayscale size", &format!("{} KB (Still > Target)", gray_size), true); }
-            }
+            } else if nerd { logger::nerd_result("Grayscale size", &format!("{} KB (Still > Target)", gray_size), true); }
         }
     }
 

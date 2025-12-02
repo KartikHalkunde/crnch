@@ -73,8 +73,8 @@ impl PacmanProgress {
 
         let percent = (progress * 100.0) as u64;
 
-        // Clear the line before printing
-        print!("\r{}", " ".repeat(80));
+        // Use ANSI escape codes to clear the line properly
+        print!("\r\x1B[2K");  // Clear entire line
         print!("\r   [{}{}{}] {}% {}   ", 
             behind, 
             pacman.yellow(), 
@@ -89,22 +89,24 @@ impl PacmanProgress {
         if is_nerd_mode() { return; }
         
         let elapsed = self.start_time.elapsed();
+        // Clear the entire line with ANSI escape code
+        print!("\r\x1B[2K");
         // Final state: pacman at the end, all dots eaten
         let behind = " ".repeat(self.width);
-        // Pad with extra spaces to clear any leftover text
-        println!("\r   [{}{}] 100% Done! ({:.1}s)   {}", 
+        println!("\r   [{}{}] 100% Done! ({:.1}s)", 
             behind, 
             "C".green(),
-            elapsed.as_secs_f64(),
-            "      " // extra spaces
+            elapsed.as_secs_f64()
         );
     }
 
     pub fn finish_with_message(&self, msg: &str) {
         if is_nerd_mode() { return; }
         
+        // Clear the entire line with ANSI escape code
+        print!("\r\x1B[2K");
         let behind = " ".repeat(self.width);
-        println!("\r   [{}{}] {}   ", behind, "C".green(), msg);
+        println!("\r   [{}{}] {}", behind, "C".green(), msg);
     }
 }
 
@@ -146,7 +148,7 @@ pub fn log_summary(
         (old_kb - new_kb) as f64 / old_kb as f64 * 100.0
     } else { 0.0 };
     
-    let saved_kb = if new_kb <= old_kb { old_kb - new_kb } else { 0 };
+    let saved_kb = old_kb.saturating_sub(new_kb);
     let ratio = if new_kb > 0 { old_kb as f64 / new_kb as f64 } else { 1.0 };
     
     // Format file sizes nicely
@@ -251,7 +253,7 @@ fn format_size(kb: u64) -> String {
         format!("{:.1} MB", kb as f64 / 1024.0)
     } else if kb == 0 {
         // File is less than 1KB, show as bytes
-        format!("< 1 KB")
+        "< 1 KB".to_string()
     } else {
         format!("{} KB", kb)
     }
@@ -353,18 +355,9 @@ pub fn nerd_stage(stage_num: u32, name: &str) {
     println!("{}", "─".repeat(75).dimmed());
 }
 
-pub fn nerd_algo(name: &str, complexity: &str, details: &str) {
-    if !is_nerd_mode() { return; }
-    println!("   |- Algorithm: {}", name.green());
-    println!("   |- Complexity: {}", complexity.cyan());
-    if !details.is_empty() {
-        println!("   |- Strategy: {}", details);
-    }
-}
-
 pub fn nerd_cmd(cmd_str: &str) {
     if !is_nerd_mode() { return; }
-    println!("   |- Cmd: {}", cmd_str.dimmed());
+    println!("  ├─ Cmd: {}", cmd_str.dimmed());
 }
 
 pub fn nerd_attempt(attempt: u32, max: u32, dpi: u64, size_kb: u64, target_kb: u64, time_ms: u128, action: &str) {
@@ -378,9 +371,41 @@ pub fn nerd_attempt(attempt: u32, max: u32, dpi: u64, size_kb: u64, target_kb: u
     
     let status_icon = if size_kb <= target_kb { "OK".green() } else { "XX".red() };
     
-    let prefix = if attempt == max { "   '-" } else { "   |-" };
+    let prefix = if attempt == max { "  └─" } else { "  ├─" };
     println!("{} [{:>2}/{}] {:>4} DPI -> {:>4} KB [{}] ({}) | {}ms | next: {}", 
         prefix, attempt, max, dpi, size_kb, status_icon, delta, time_ms, action.dimmed());
+}
+
+pub fn nerd_quality_attempt(attempt: u32, max: u32, quality: u8, size_kb: u64, target_kb: u64, time_ms: u128, action: &str) {
+    if !is_nerd_mode() { return; }
+    
+    let delta = if size_kb > target_kb {
+        format!("+{} KB", size_kb - target_kb).red()
+    } else {
+        format!("-{} KB", target_kb - size_kb).green()
+    };
+    
+    let status_icon = if size_kb <= target_kb { "OK".green() } else { "XX".red() };
+    
+    let prefix = if attempt == max { "  └─" } else { "  ├─" };
+    println!("{} [{:>2}] Quality {:>3}% -> {:>4} KB [{}] ({}) | {}ms | next: {}", 
+        prefix, attempt, quality, size_kb, status_icon, delta, time_ms, action.dimmed());
+}
+
+pub fn nerd_scale_attempt(attempt: u32, max: u32, scale: u8, size_kb: u64, target_kb: u64, time_ms: u128, action: &str) {
+    if !is_nerd_mode() { return; }
+    
+    let delta = if size_kb > target_kb {
+        format!("+{} KB", size_kb - target_kb).red()
+    } else {
+        format!("-{} KB", target_kb - size_kb).green()
+    };
+    
+    let status_icon = if size_kb <= target_kb { "OK".green() } else { "XX".red() };
+    
+    let prefix = if attempt == max { "  └─" } else { "  ├─" };
+    println!("{} [{:>2}] Scale {:>3}% -> {:>4} KB [{}] ({}) | {}ms | next: {}", 
+        prefix, attempt, scale, size_kb, status_icon, delta, time_ms, action.dimmed());
 }
 
 pub fn nerd_result(label: &str, value: &str, is_last: bool) {
@@ -401,7 +426,7 @@ pub fn nerd_output_summary(_input: &str, output: &str, old_kb: u64, new_kb: u64,
     } else { 0.0 };
     
     let ratio = if new_kb > 0 { old_kb as f64 / new_kb as f64 } else { 1.0 };
-    let saved_kb = if new_kb <= old_kb { old_kb - new_kb } else { 0 };
+    let saved_kb = old_kb.saturating_sub(new_kb);
     
     println!("\n{}", "╔═══════════════════════════════════════════════════════════════════════╗".green());
     println!("{}", "║                         COMPRESSION RESULT                            ║".green().bold());
@@ -449,16 +474,16 @@ pub fn nerd_search_range(min: u64, max: u64, mid: u64) {
     let mid_pos = (mid as f64 / total_range as f64 * width as f64) as usize;
     
     let mut bar = vec!['.'; width];
-    for i in min_pos..=max_pos.min(width - 1) {
-        bar[i] = '=';
+    for item in bar.iter_mut().take(max_pos.min(width - 1) + 1).skip(min_pos) {
+        *item = '=';
     }
     if mid_pos < width {
         bar[mid_pos] = '^';
     }
     
     let bar_str: String = bar.iter().collect();
-    println!("   |- Range: [{}]", bar_str.dimmed());
-    println!("   |-         {} DPI{}{} DPI", 
+    println!("  ├─ Range: [{}]", bar_str.dimmed());
+    println!("  ├─         {} DPI{}{} DPI", 
         min, 
         " ".repeat(mid_pos.saturating_sub(min_pos.to_string().len())),
         max
@@ -638,7 +663,7 @@ fn get_image_dimensions(path: &str) -> Option<(u32, u32)> {
         .ok()
         .and_then(|output| {
             let s = String::from_utf8_lossy(&output.stdout);
-            let parts: Vec<&str> = s.trim().split_whitespace().collect();
+            let parts: Vec<&str> = s.split_whitespace().collect();
             if parts.len() >= 2 {
                 let width = parts[0].parse::<u32>().ok()?;
                 let height = parts[1].parse::<u32>().ok()?;

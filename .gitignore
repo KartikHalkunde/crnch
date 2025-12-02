@@ -1,13 +1,41 @@
+# Build artifacts
 target/
 *.rs.bk
-*.log
+
+# Test files
 testing-files/
 *.pdf
 *.png
 *.jpg
+*.jpeg
 
+# Compressed output files
+crnched_*
+
+# Temporary files
+*.tmp
+*.tmp.*
+*~
+
+# Logs
+*.log
+
+# Documentation drafts (keep final docs)
 FINAL_TEST_REPORT.md
 NERD_MODE_COMPLETE.md
 NERD_MODE_IMPROVEMENTS.md
 TEST_LOGS.txt
 TEST_REPORT.md
+ERROR_HANDLING_COMPLETE.md
+ERROR_HANDLING_TESTS.md
+QUICK_REFERENCE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
