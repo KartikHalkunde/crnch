@@ -11,7 +11,7 @@
 
 
 
-**crnch** is a blazing-fast Rust CLI tool that intelligently compresses PNG, JPG, and PDF files to target sizes with minimal quality loss. It orchestrates industry-standard tools (`ghostscript`, `pngquant`, `imagemagick`, `jpegoptim`, `oxipng`) through sophisticated multi-stage algorithms and binary search optimization.
+**crnch** is a fast Rust CLI tool that smartly compresses PNG, JPG, and PDF files to target sizes with minimal quality loss. With help of industry-standard tools (`ghostscript`, `pngquant`, `imagemagick`, `jpegoptim`, `oxipng`) through sophisticated multi-stage algorithms and binary search optimization.
 
 ![Rust](https://img.shields.io/badge/Made%20with-Rust-orange)
 ![Arch](https://img.shields.io/badge/Arch-Native-blue)
@@ -26,7 +26,7 @@
   - Algorithm complexity analysis
   - Stage-by-stage processing details
   - Comprehensive compression statistics (ratio, reduction %, time)
-- **🌊 Multi-Stage Waterfall Logic:**
+- **Multi-Stage Waterfall Logic:**
   - **PNG:** Lossless (oxipng) → Quantization (pngquant) → Hybrid Binary Search → Grayscale → Resize
   - **JPG:** Lossless (jpegoptim) → Lossy + ImageMagick resize/quality tuning
   - **PDF:** Standard compression → Binary search DPI optimization (1-2400 range)
@@ -178,19 +178,16 @@ Contributions welcome! Please ensure:
 - All compression paths tested
 - Nerd mode output sections included for new features
 
-## 📄 License
+## License
 
 MIT License - See LICENSE file for details
 
-## 🙏 Credits
+## Credits
 
-Built with ❤️ using:
+Built with using:
 - [Ghostscript](https://www.ghostscript.com/) - PDF compression
 - [ImageMagick](https://imagemagick.org/) - Image manipulation
 - [pngquant](https://pngquant.org/) - PNG quantization
 - [jpegoptim](https://github.com/tjko/jpegoptim) - JPEG optimization
 - [oxipng](https://github.com/shssoichiro/oxipng) - PNG optimization
-
----
-
-**Made by Kartik using Rust 🦀 and some help of ☕**
+- and also ☕
