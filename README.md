@@ -1,12 +1,12 @@
 ```bash
-                                        █████                                   ███                ██████          
-                                       ░░███                                   ░░░                ███░░███         
-  ██████  ████████  ████████    ██████  ░███████                               ████  ████████    ░███ ░░░   ██████ 
- ███░░███░░███░░███░░███░░███  ███░░███ ░███░░███        ██████████ ██████████░░███ ░░███░░███  ███████    ███░░███
-░███ ░░░  ░███ ░░░  ░███ ░███ ░███ ░░░  ░███ ░███       ░░░░░░░░░░ ░░░░░░░░░░  ░███  ░███ ░███ ░░░███░    ░███ ░███
-░███  ███ ░███      ░███ ░███ ░███  ███ ░███ ░███                              ░███  ░███ ░███   ░███     ░███ ░███
-░░██████  █████     ████ █████░░██████  ████ █████                             █████ ████ █████  █████    ░░██████ 
- ░░░░░░  ░░░░░     ░░░░ ░░░░░  ░░░░░░  ░░░░ ░░░░░                             ░░░░░ ░░░░ ░░░░░  ░░░░░      ░░░░░░  
+                                        █████          
+                                       ░░███           
+  ██████  ████████  ████████    ██████  ░███████       
+ ███░░███░░███░░███░░███░░███  ███░░███ ░███░░███     
+░███ ░░░  ░███ ░░░  ░███ ░███ ░███ ░░░  ░███ ░███      
+░███  ███ ░███      ░███ ░███ ░███  ███ ░███ ░███       
+░░██████  █████     ████ █████░░██████  ████ █████       
+ ░░░░░░  ░░░░░     ░░░░ ░░░░░  ░░░░░░  ░░░░ ░░░░░       
                                                                                                                    
 ````
 
@@ -18,10 +18,10 @@
 ![Arch](https://img.shields.io/badge/Arch-Native-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## ✨ Features
+##  Features
 
-- **🎯 Intelligent Target Sizing:** Precisely hit file size targets using binary search algorithms (e.g., `--size 200k`)
-- **🔬 Nerd Mode (`--nerd`):** Professional box-formatted output with:
+- **Intelligent Target Sizing:** Precisely hit file size targets using binary search algorithms (e.g., `--size 200k`)
+- **🤓 Nerd Mode (`--nerd`):** Professional box-formatted output with:
   - System information (OS, CPU, RAM, tool versions)
   - Image dimensions and metadata
   - Algorithm complexity analysis
@@ -31,11 +31,11 @@
   - **PNG:** Lossless (oxipng) → Quantization (pngquant) → Hybrid Binary Search → Grayscale → Resize
   - **JPG:** Lossless (jpegoptim) → Lossy + ImageMagick resize/quality tuning
   - **PDF:** Standard compression → Binary search DPI optimization (1-2400 range)
-- **📊 Pacman Progress Bar:** Smooth, animated progress with real-time updates
-- **🔍 Smart Dependency Detection:** Auto-checks for required tools and provides installation guidance
-- **🎨 Color-Coded Output:** Beautiful terminal UI with hierarchical formatting
-- **💬 Interactive Prompts:** Offers fallback options (grayscale/resize) when targets are unreachable
-- **⚡ Optimized Performance:** Release builds with aggressive optimizations
+- **Pacman Progress Bar:** Smooth, animated progress with real-time updates
+- **Smart Dependency Detection:** Auto-checks for required tools and provides installation guidance
+- **Color-Coded Output:** Beautiful terminal UI with hierarchical formatting
+- **Interactive Prompts:** Offers fallback options (grayscale/resize) when targets are unreachable
+- **Optimized Performance:** Release builds with aggressive optimizations
 
 ## 🛠️ Supported Formats & Tools
 
@@ -45,7 +45,7 @@
 | **PNG** | `oxipng`, `pngquant`, `imagemagick` | Lossless → 256-color quantization → Grayscale → Dimension resize |
 | **PDF** | `ghostscript` | Standard presets (`/printer`) → Binary search DPI (O(log n) iterations) |
 
-## 🚀 Usage
+## Usage
 
 ```bash
 crnch <file> [OPTIONS]
@@ -74,7 +74,7 @@ crnch photo.jpg --level high --output compressed.jpg
 for file in *.png; do crnch "$file" --size 500k --auto-yes; done
 ```
 
-## 📦 Installation
+## Installation
 
 ### Arch Linux
 ```bash
@@ -99,7 +99,7 @@ sudo apt install ghostscript imagemagick pngquant jpegoptim oxipng
 sudo dnf install ghostscript ImageMagick pngquant jpegoptim oxipng
 ```
 
-## 🎨 Nerd Mode Output
+##  Nerd Mode Output
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════╗
@@ -147,7 +147,7 @@ sudo dnf install ghostscript ImageMagick pngquant jpegoptim oxipng
 ╚═══════════════════════════════════════════════════════════════════════╝
 ```
 
-## 🧠 Algorithm Details
+##  Algorithm Details
 
 ### PNG Compression Strategy
 1. **Lossless (oxipng):** Optimize PNG structure without quality loss
@@ -166,13 +166,13 @@ sudo dnf install ghostscript ImageMagick pngquant jpegoptim oxipng
 2. **Quality Reduction:** Binary search quality parameter (1-100)
 3. **Resize + Extent:** Use ImageMagick to resize and pad to exact target
 
-## 📊 Performance
+##  Performance
 
 - **Compression Speed:** ~1-5s for typical images (1-5 MB)
 - **PDF Binary Search:** 10-14 iterations to converge on target
 - **Memory Efficient:** Streams data, minimal RAM overhead
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions welcome! Please ensure:
 - Code compiles with `cargo build --release` (zero warnings)
@@ -194,4 +194,4 @@ Built with ❤️ using:
 
 ---
 
-**Made with Rust 🦀 | Optimized for Arch Linux 🐧**
+**Made by Kartik using Rust 🦀 and some help of ☕**
