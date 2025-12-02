@@ -116,12 +116,11 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             logger::nerd_result("Tool", "jpegoptim", false);
             logger::nerd_result("Complexity", "O(n) I/O bound", false);
             logger::nerd_result("Strategy", "Stripping metadata and optimizing", false);
-            logger::nerd_cmd(&format!("jpegoptim --strip-all --dest=. {}", input));
+            logger::nerd_cmd(&format!("jpegoptim --strip-all --stdout {} > tmp", input));
         }
         // Run jpegoptim for lossless optimization
         let status = Command::new("jpegoptim")
             .arg("--strip-all")
-            .arg("--dest=.")
             .arg("--stdout")
             .arg(input)
             .stdout(fs::File::create(&tmp_optim)?)
@@ -204,12 +203,11 @@ fn compress_jpg(input: &str, output: &str, target_kb: Option<u64>, level: Option
             logger::nerd_result("Tool", "jpegoptim", false);
                 logger::nerd_result("Complexity", "O(n) I/O bound", false);
                 logger::nerd_result("Strategy", "Stripping metadata and optimizing", false);
-            logger::nerd_cmd(&format!("jpegoptim --strip-all --dest=. {}", input));
+            logger::nerd_cmd(&format!("jpegoptim --strip-all --stdout {} > tmp", input));
         }
         // Run jpegoptim for lossless optimization
         let status = Command::new("jpegoptim")
             .arg("--strip-all")
-            .arg("--dest=.")
             .arg("--stdout")
             .arg(input)
             .stdout(fs::File::create(&tmp_optim)?)
